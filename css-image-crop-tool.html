@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSS 이미지 자르기 도우미</title>
+<style>
+/* 위쪽: 스캔 그림과 선택 영역 / 아래쪽: 설정·결과 코드·미리보기 */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #1d232b; --muted: #5f6b7a;
+  --line: #d6dbe2; --accent: #2a62c9; --accent-fg: #ffffff;
+  --sel: #ff4d2e; --shade: rgba(10, 14, 20, .55); --code: #f0f2f5;
+  --font: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --mono: Consolas, "D2Coding", "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #15191f; --panel: #1d232b; --fg: #e4e8ee; --muted: #9aa5b3;
+    --line: #333c48; --accent: #6d9cf0; --accent-fg: #0d1117; --code: #252c36; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font); }
+header { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 16px;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
+header input[type=text] { flex: 1 1 380px; min-width: 0; }
+header #langBtn { margin-left: auto; }
+input, select, textarea, button { font: inherit; color: inherit; }
+input[type=text], input[type=number], select, textarea {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
+button { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.topArea { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 35%); }
+#stageWrap { position: relative; overflow: auto; height: 70vh; padding: 16px; }
+#toolbar { position: sticky; top: 0; left: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  margin: -16px -16px 12px; padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+#toolbar .info { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 8px; }
+#stage { position: relative; display: inline-block; user-select: none; touch-action: none; cursor: crosshair; line-height: 0; }
+#stage img { display: block; max-width: none; }
+#sel { position: absolute; border: 1px solid var(--sel); box-shadow: 0 0 0 9999px var(--shade); cursor: move; }
+#sel[hidden] { display: none; }
+#sel .h { position: absolute; width: 11px; height: 11px; background: #fff; border: 1px solid var(--sel); margin: -6px 0 0 -6px; }
+#sel .h[data-h=nw]{left:0;top:0;cursor:nwse-resize} #sel .h[data-h=n]{left:50%;top:0;cursor:ns-resize}
+#sel .h[data-h=ne]{left:100%;top:0;cursor:nesw-resize} #sel .h[data-h=e]{left:100%;top:50%;cursor:ew-resize}
+#sel .h[data-h=se]{left:100%;top:100%;cursor:nwse-resize} #sel .h[data-h=s]{left:50%;top:100%;cursor:ns-resize}
+#sel .h[data-h=sw]{left:0;top:100%;cursor:nesw-resize} #sel .h[data-h=w]{left:0;top:50%;cursor:ew-resize}
+#sel .tag { position: absolute; left: 0; top: -22px; background: var(--sel); color: #fff; font: 12px/20px var(--mono);
+  padding: 0 6px; white-space: nowrap; }
+#empty { color: var(--muted); padding: 40px 0; line-height: 1.7; }
+#previewPanel { overflow: auto; max-height: 70vh; background: var(--panel); border-left: 1px solid var(--line); padding: 14px 16px; }
+#outputPanel { background: var(--panel); border-top: 1px solid var(--line); padding: 14px 16px; }
+aside { overflow: auto; background: var(--panel); border-top: 1px solid var(--line); padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 900px) {
+  .topArea { grid-template-columns: 1fr; }
+  #previewPanel { max-height: none; border-left: 0; border-top: 1px solid var(--line); }
+}
+section h2 { font-size: 13px; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+.grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; }
+.grid label { color: var(--muted); white-space: nowrap; }
+label[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.grid input[type=text], .grid select { width: 100%; }
+.size-control { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.size-control input { flex: 1; min-width: 0; width: 0; }
+.size-control button { padding-inline: 8px; white-space: nowrap; }
+.nums { display: grid; grid-template-columns: repeat(2, auto 1fr); gap: 6px 8px; align-items: center; }
+.nums label { font-family: var(--mono); color: var(--muted); }
+.nums input { width: 100%; }
+.mode { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.mode label { display: flex; gap: 6px; align-items: center; }
+textarea#out { width: 100%; height: 230px; font: 13px/1.45 var(--mono); background: var(--code); resize: vertical; white-space: pre; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+#msg { font-size: 13px; }
+#msg.err { color: #d13b2a; }
+#previewBox { overflow: auto; background: var(--code); padding: 10px; border-radius: 4px; }
+#previewBox .crop { overflow: hidden; outline: 1px dashed var(--muted); }
+#previewBox .crop > div { position: relative; }
+#previewBox img { display: block; max-width: none; }
+details summary { cursor: pointer; color: var(--muted); }
+textarea#importBox { width: 100%; height: 110px; font: 12.5px/1.4 var(--mono); }
+kbd { font: 12px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; background: var(--bg); }
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">CSS 이미지 자르기 도우미</h1>
+  <input type="text" id="src" data-i18n-placeholder="sourcePlaceholder" placeholder="페이지 주소, 또는 '페이지:파일명.pdf/7', 또는 파일명">
+  <label><span data-i18n="pageLabel">쪽</span> <input type="number" id="pageNo" min="1" data-i18n-placeholder="autoPlaceholder" placeholder="자동"></label>
+  <button class="primary" id="loadBtn" data-i18n="load">불러오기</button>
+  <span id="msg"></span>
+  <button id="langBtn" type="button" aria-label="Switch language">English</button>
+</header>
+<main>
+  <div class="topArea">
+    <div id="stageWrap">
+      <div id="toolbar">
+        <button id="zFit" data-i18n="fit" data-i18n-title="fitTitle" title="창 폭에 맞춤">맞춤</button>
+        <button id="zOut" data-i18n-title="zoomOut" title="축소">−</button>
+        <button id="zIn" data-i18n-title="zoomIn" title="확대">+</button>
+        <button id="selAll" data-i18n="selectAll">전체 선택</button>
+        <button id="selClear" data-i18n="clearSelection">선택 해제</button>
+        <span class="info" id="zoomInfo"></span>
+      </div>
+      <div id="empty"><span data-i18n-html="emptyHelp">위에 페이지 주소를 넣고 <b>불러오기</b>를 누르세요.<br>
+        그림이 뜨면 원하는 부분을 마우스로 끌어 선택합니다. 선택 상자는 끌어서 옮기거나, 모서리·변의 손잡이로 크기를 바꿀 수 있습니다.<br>
+        <kbd>←↑→↓</kbd> 1px 이동, <kbd>Shift</kbd>+화살표 10px 이동, <kbd>Alt</kbd>+화살표 오른쪽·아래 변 1px 늘이기/줄이기.</span></div>
+      <div id="stage" hidden>
+        <img id="img" alt="" draggable="false">
+        <div id="sel" hidden tabindex="0">
+          <span class="tag" id="selTag"></span>
+          <i class="h" data-h="nw"></i><i class="h" data-h="n"></i><i class="h" data-h="ne"></i><i class="h" data-h="e"></i>
+          <i class="h" data-h="se"></i><i class="h" data-h="s"></i><i class="h" data-h="sw"></i><i class="h" data-h="w"></i>
+        </div>
+      </div>
+    </div>
+
+    <section id="previewPanel">
+      <h2 data-i18n="preview">미리보기 (실제 틀과 같은 방식으로 자름)</h2>
+      <div id="previewBox"><span class="hint" data-i18n="previewEmpty">영역을 선택하면 여기에 나타납니다.</span></div>
+    </section>
+  </div>
+
+  <section id="outputPanel">
+    <h2 data-i18n="templateCode">틀 코드</h2>
+    <textarea id="out" readonly spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" id="copyBtn" data-i18n="copy">복사</button>
+      <label><input type="checkbox" id="oneLine"> <span data-i18n="oneLine">한 줄로</span></label>
+      <label><input type="checkbox" id="skipEmpty" checked> <span data-i18n="skipEmpty">빈 변수 생략</span></label>
+      <label id="englishOutputOption"><input type="checkbox" id="englishOutput"> <span data-i18n="englishOutput">영어 변수 이름으로 출력</span></label>
+      <span id="copyMsg" class="hint"></span>
+    </div>
+  </section>
+
+  <aside>
+    <section>
+      <h2 data-i18n="sizeModeHeading">크기 기준</h2>
+      <div class="mode">
+        <label data-i18n-title="modeBTitle" title="원본 이미지를 표시할 너비(픽셀)를 정합니다. 자르기 좌표와 크기는 이 너비를 기준으로 계산됩니다."><input type="radio" name="mode" value="bsize" id="modeB" checked> <span data-i18n="modeB">원본 쪽 전체 폭(기준폭)을 정함</span></label>
+        <label data-i18n-title="modeCTitle" title="잘라낼 영역의 너비(픽셀)를 정합니다. 이 값을 기준으로 원본 이미지의 기준폭을 자동 계산합니다."><input type="radio" name="mode" value="cwidth" id="modeC"> <span data-i18n="modeC">잘라낸 그림의 폭(자르기폭)을 정함 → 기준폭 자동 계산</span></label>
+      </div>
+      <div class="grid">
+        <label for="sizeIn" id="sizeLabel" data-i18n="baseWidth" title="원본 이미지를 표시할 너비(픽셀)입니다.">기준폭</label>
+        <div class="size-control">
+          <input type="number" id="sizeIn" min="1" value="800" title="원본 이미지를 표시할 너비(픽셀)입니다.">
+          <button id="resetSize" type="button" disabled data-i18n="useOriginalWidth" title="그림의 원본 너비를 기준폭으로 사용합니다.">원본 너비 사용</button>
+        </div>
+      </div>
+      <p class="hint" id="sizeHint"></p>
+    </section>
+
+    <section>
+      <h2 data-i18n="cropHeading">잘라낼 영역 (기준폭 기준 픽셀)</h2>
+      <div class="nums">
+        <label for="vLeft" data-i18n="leftOffset" data-i18n-title="leftOffsetTitle" title="이미지 왼쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.">왼쪽오프셋</label><input type="number" id="vLeft" min="0" data-i18n-title="leftOffsetTitle" title="이미지 왼쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.">
+        <label for="vTop" data-i18n="topOffset" data-i18n-title="topOffsetTitle" title="이미지 위쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.">위쪽오프셋</label><input type="number" id="vTop" min="0" data-i18n-title="topOffsetTitle" title="이미지 위쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.">
+        <label for="vW" data-i18n="cropWidth" data-i18n-title="cropWidthTitle" title="잘라 표시할 영역의 너비(픽셀)입니다.">자르기폭</label><input type="number" id="vW" min="1" data-i18n-title="cropWidthTitle" title="잘라 표시할 영역의 너비(픽셀)입니다.">
+        <label for="vH" data-i18n="cropHeight" data-i18n-title="cropHeightTitle" title="잘라 표시할 영역의 높이(픽셀)입니다.">자르기높이</label><input type="number" id="vH" min="1" data-i18n-title="cropHeightTitle" title="잘라 표시할 영역의 높이(픽셀)입니다.">
+      </div>
+      <p class="hint" data-i18n="numberHint">숫자를 직접 고쳐도 왼쪽 선택 상자가 따라 움직입니다.</p>
+    </section>
+
+    <section>
+      <h2 data-i18n="otherParams">기타 변수</h2>
+      <div class="grid">
+        <label for="pImage" data-i18n="image" data-i18n-title="imageTitle" title="표시할 파일 이름입니다.">그림</label><input type="text" id="pImage" data-i18n-title="imageTitle" title="표시할 파일 이름입니다.">
+        <label for="pPage" data-i18n="pageLabel" data-i18n-title="pageTitle" title="PDF와 같이 여러 쪽으로 된 파일에서 표시할 쪽 번호입니다.">쪽</label><input type="text" id="pPage" data-i18n-placeholder="pagePlaceholder" data-i18n-title="pageTitle" placeholder="PDF·DjVu 쪽 번호" title="PDF와 같이 여러 쪽으로 된 파일에서 표시할 쪽 번호입니다.">
+        <label for="pLoc" data-i18n="location" data-i18n-title="locationTitle" title="문서에서 그림을 배치할 위치입니다. right, left, center, none 중에서 선택할 수 있습니다. 설명을 지정한 경우 기본 위치는 오른쪽입니다.">위치</label>
+        <select id="pLoc" data-i18n-title="locationTitle" title="문서에서 그림을 배치할 위치입니다. 설명을 지정한 경우 기본 위치는 오른쪽입니다."><option value="" data-i18n="empty">(비움)</option><option>center</option><option>left</option><option>right</option><option>none</option></select>
+        <label for="pDesc" data-i18n="description" data-i18n-title="descriptionTitle" title="그림 아래에 표시할 설명입니다. 지정하면 그림이 설명을 포함한 섬네일 형식으로 표시됩니다.">설명</label><input type="text" id="pDesc" data-i18n-placeholder="descriptionPlaceholder" data-i18n-title="descriptionTitle" placeholder="넣으면 테두리·설명이 붙음" title="그림 아래에 표시할 설명입니다. 지정하면 그림이 설명을 포함한 섬네일 형식으로 표시됩니다.">
+        <label for="pAlt" data-i18n="alt" data-i18n-title="altTitle" title="그림의 대체 텍스트입니다. 생략하면 설명, 설명도 없으면 파일 이름을 사용합니다.">대체텍스트</label><input type="text" id="pAlt" data-i18n-title="altTitle" title="그림의 대체 텍스트입니다. 생략하면 설명, 설명도 없으면 파일 이름을 사용합니다.">
+        <label for="pLink" data-i18n="link" data-i18n-title="linkTitle" title="그림을 눌렀을 때 연결할 문서입니다.">링크</label><input type="text" id="pLink" data-i18n-title="linkTitle" title="그림을 눌렀을 때 연결할 문서입니다.">
+        <label for="pMagnifyLink" data-i18n="magnifyLink" data-i18n-title="magnifyLinkTitle" title="확대 아이콘이 연결될 대상입니다. 그림이 아닌 대상을 확대 아이콘에 연결할 때 사용합니다.">확대링크</label><input type="text" id="pMagnifyLink" data-i18n-title="magnifyLinkTitle" title="확대 아이콘이 연결될 대상입니다. 그림이 아닌 대상을 확대 아이콘에 연결할 때 사용합니다.">
+      </div>
+    </section>
+
+    <section>
+      <details>
+        <summary data-i18n="importSummary">기존 틀 코드 불러와서 고치기</summary>
+        <textarea id="importBox" spellcheck="false" data-i18n-placeholder="importPlaceholder" placeholder="{{CSS 이미지 자르기 |그림=... |쪽=7 |기준폭=... }}"></textarea>
+        <div class="row"><button id="importBtn" data-i18n="importButton">이 코드로 불러오기</button></div>
+      </details>
+    </section>
+  </aside>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const translations = {
+  ko: {
+    title: 'CSS 이미지 자르기 도우미',
+    sourcePlaceholder: "페이지 주소, 또는 '페이지:파일명.pdf/7', 또는 파일명",
+    pageLabel: '쪽', autoPlaceholder: '자동', load: '불러오기',
+    fit: '맞춤', fitTitle: '창 폭에 맞춤', zoomOut: '축소', zoomIn: '확대',
+    selectAll: '전체 선택', clearSelection: '선택 해제',
+    emptyHelp: '위에 페이지 주소를 넣고 <b>불러오기</b>를 누르세요.<br>그림이 뜨면 원하는 부분을 마우스로 끌어 선택합니다. 선택 상자는 끌어서 옮기거나, 모서리·변의 손잡이로 크기를 바꿀 수 있습니다.<br><kbd>←↑→↓</kbd> 1px 이동, <kbd>Shift</kbd>+화살표 10px 이동, <kbd>Alt</kbd>+화살표 오른쪽·아래 변 1px 늘이기/줄이기.',
+    sizeModeHeading: '크기 기준', modeB: '원본 쪽 전체 폭(기준폭)을 정함',
+    modeC: '잘라낸 그림의 폭(자르기폭)을 정함 → 기준폭 자동 계산',
+    modeBTitle: '원본 이미지를 표시할 너비(픽셀)를 정합니다. 자르기 좌표와 크기는 이 너비를 기준으로 계산됩니다.',
+    modeCTitle: '잘라낼 영역의 너비(픽셀)를 정합니다. 이 값을 기준으로 원본 이미지의 기준폭을 자동 계산합니다.',
+    baseWidth: '기준폭', targetCropWidth: '목표 자르기폭',
+    baseWidthTitle: '원본 이미지를 표시할 너비(픽셀)입니다. 자르기 좌표와 크기의 기준이 됩니다.',
+    targetCropWidthTitle: '잘라낼 영역의 목표 너비(픽셀)입니다. 이 값을 기준으로 기준폭을 자동 계산합니다.',
+    useOriginalWidth: '원본 너비 사용', useOriginalWidthTitle: '그림의 원본 너비를 기준폭으로 사용합니다.',
+    cropHeading: '잘라낼 영역 (기준폭 기준 픽셀)',
+    leftOffset: '왼쪽오프셋', leftOffsetTitle: '이미지 왼쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.',
+    topOffset: '위쪽오프셋', topOffsetTitle: '이미지 위쪽에서 자르기를 시작할 위치(픽셀)입니다. 생략하면 0입니다.',
+    cropWidth: '자르기폭', cropWidthTitle: '잘라 표시할 영역의 너비(픽셀)입니다.',
+    cropHeight: '자르기높이', cropHeightTitle: '잘라 표시할 영역의 높이(픽셀)입니다.',
+    numberHint: '숫자를 직접 고쳐도 왼쪽 선택 상자가 따라 움직입니다.',
+    otherParams: '기타 변수', image: '그림', imageTitle: '표시할 파일 이름입니다.',
+    pageTitle: 'PDF와 같이 여러 쪽으로 된 파일에서 표시할 쪽 번호입니다.',
+    pagePlaceholder: 'PDF·DjVu 쪽 번호', location: '위치',
+    locationTitle: '문서에서 그림을 배치할 위치입니다. right, left, center, none 중에서 선택할 수 있습니다. 설명을 지정한 경우 기본 위치는 오른쪽입니다.',
+    empty: '(비움)', description: '설명',
+    descriptionTitle: '그림 아래에 표시할 설명입니다. 지정하면 그림이 설명을 포함한 섬네일 형식으로 표시됩니다.',
+    descriptionPlaceholder: '넣으면 테두리·설명이 붙음', alt: '대체텍스트',
+    altTitle: '그림의 대체 텍스트입니다. 생략하면 설명, 설명도 없으면 파일 이름을 사용합니다.',
+    link: '링크', linkTitle: '그림을 눌렀을 때 연결할 문서입니다.',
+    magnifyLink: '확대링크', magnifyLinkTitle: '확대 아이콘이 연결될 대상입니다. 그림이 아닌 대상을 확대 아이콘에 연결할 때 사용합니다.',
+    templateCode: '틀 코드', copy: '복사', oneLine: '한 줄로', skipEmpty: '빈 변수 생략',
+    englishOutput: '영어 변수 이름으로 출력', preview: '미리보기 (실제 틀과 같은 방식으로 자름)',
+    previewEmpty: '영역을 선택하면 여기에 나타납니다.',
+    importSummary: '기존 틀 코드 불러와서 고치기',
+    importPlaceholder: '{{CSS 이미지 자르기 |그림=... |쪽=7 |기준폭=... }}',
+    importButton: '이 코드로 불러오기',
+    loading: '불러오는 중…', missingFile: '파일을 찾지 못했습니다: {0}',
+    pageCountError: '이 파일은 {0}쪽까지 있습니다.',
+    imageLoadError: '그림을 불러오지 못했습니다. 잠시 뒤 다시 시도하세요.',
+    sizeWarning: '주의: 원본이 {0}px 폭이라 bSize {1}은(는) 원본보다 큽니다.',
+    zoom: '화면 배율 {0}%', copied: '복사했습니다.',
+    imageMissingInput: '파일명을 찾을 수 없습니다. 주소나 파일명을 확인하세요.',
+    cropSizeHint: '쪽 전체를 {0}×{1}px로 그린 뒤 그 안에서 잘라냅니다.',
+    ratioHint: '쪽 비율 {0} : 1 (가로:세로)',
+    originalWidthButtonTitle: '그림의 원본 너비 {0}px를 기준폭으로 사용합니다.',
+    originalWidthUnavailable: '원본 너비 정보를 가져오지 못했습니다.',
+    loadedFile: '{0}{1}{2}', pageSuffix: ' · {0}쪽', pageCountSuffix: ' / 전체 {0}쪽',
+    fullImageWidthHelp: '원본 이미지를 표시할 너비(픽셀)입니다. 자르기 좌표와 크기의 기준이 됩니다.',
+    targetCropWidthHelp: '잘라낼 영역의 목표 너비(픽셀)입니다. 이 값을 기준으로 기준폭을 자동 계산합니다.',
+    invalidTemplate: 'CSS 이미지 자르기 틀 코드를 찾지 못했습니다.',
+    missingClose: '틀 코드의 닫는 중괄호를 찾지 못했습니다.',
+    missingImageParameter: '그림/Image 변수를 찾지 못했습니다.',
+    switchLanguage: 'English',
+  },
+  en: {
+    title: 'CSS Image Crop Helper',
+    sourcePlaceholder: "Page URL, 'Page:filename.pdf/7', or filename",
+    pageLabel: 'Page', autoPlaceholder: 'Auto', load: 'Load',
+    fit: 'Fit', fitTitle: 'Fit to window', zoomOut: 'Zoom out', zoomIn: 'Zoom in',
+    selectAll: 'Select all', clearSelection: 'Clear selection',
+    emptyHelp: 'Enter a page URL above and click <b>Load</b>.<br>When the image appears, drag to select a region. Drag the selection to move it, or use its corner and edge handles to resize it.<br><kbd>←↑→↓</kbd> Move 1 px; <kbd>Shift</kbd>+arrow Move 10 px; <kbd>Alt</kbd>+arrow Resize the right or bottom edge by 1 px.',
+    sizeModeHeading: 'Sizing mode', modeB: 'Set the full page width (bSize)',
+    modeC: 'Set the crop width (cWidth) → calculate bSize automatically',
+    modeBTitle: 'Sets the displayed width of the full image in pixels. Crop coordinates and dimensions are calculated relative to this width.',
+    modeCTitle: 'Sets the crop width in pixels. The full image width (bSize) is calculated automatically from this value.',
+    baseWidth: 'bSize', targetCropWidth: 'Target cWidth',
+    baseWidthTitle: 'The displayed width of the full image in pixels. Crop coordinates and dimensions are relative to this width.',
+    targetCropWidthTitle: 'The target crop width in pixels. The full image width (bSize) is calculated automatically from this value.',
+    useOriginalWidth: 'Use original width', useOriginalWidthTitle: 'Use the image’s original width as bSize.',
+    cropHeading: 'Crop region (pixels relative to bSize)',
+    leftOffset: 'oLeft', leftOffsetTitle: 'Horizontal pixel offset from the left edge of the image. Defaults to 0.',
+    topOffset: 'oTop', topOffsetTitle: 'Vertical pixel offset from the top edge of the image. Defaults to 0.',
+    cropWidth: 'cWidth', cropWidthTitle: 'Width of the cropped region in pixels.',
+    cropHeight: 'cHeight', cropHeightTitle: 'Height of the cropped region in pixels.',
+    numberHint: 'The selection box on the left updates when you edit these values.',
+    otherParams: 'Other parameters', image: 'Image', imageTitle: 'The name of the file to display.',
+    pageTitle: 'The page number to display for multipage files such as PDFs.',
+    pagePlaceholder: 'PDF/DjVu page number', location: 'Location',
+    locationTitle: 'Position of the image in the page: right, left, center, or none. Defaults to right when a description is provided.',
+    empty: '(None)', description: 'Description',
+    descriptionTitle: 'Caption displayed below the image. When provided, the image is shown as a framed thumbnail.',
+    descriptionPlaceholder: 'Adds a frame and caption', alt: 'Alt text',
+    altTitle: 'Alternative text for the image. Defaults to the description, or to the filename if no description is provided.',
+    link: 'Link', linkTitle: 'Page to open when the image is clicked.',
+    magnifyLink: 'Magnify link', magnifyLinkTitle: 'Target of the magnify icon. Use this to link the icon to something other than the image.',
+    templateCode: 'Template code', copy: 'Copy', oneLine: 'Single line', skipEmpty: 'Omit empty parameters',
+    englishOutput: 'Output English parameter names', preview: 'Preview (cropped like the template output)',
+    previewEmpty: 'Select a region to preview it here.',
+    importSummary: 'Load and edit existing template code',
+    importPlaceholder: '{{CSS image crop |Image=... |Page=7 |bSize=... }}',
+    importButton: 'Load this code',
+    loading: 'Loading…', missingFile: 'File not found: {0}',
+    pageCountError: 'This file has {0} pages.',
+    imageLoadError: 'Could not load the image. Please try again later.',
+    sizeWarning: 'Warning: the original is only {0}px wide; bSize {1} exceeds its width.',
+    zoom: 'Zoom {0}%', copied: 'Copied.',
+    imageMissingInput: 'Could not find a filename. Check the URL or filename.',
+    cropSizeHint: 'The full page is rendered at {0}×{1}px, then cropped.',
+    ratioHint: 'Page aspect ratio {0}:1 (width:height)',
+    originalWidthButtonTitle: 'Use the original image width ({0}px) as bSize.',
+    originalWidthUnavailable: 'Could not get the original image width.',
+    loadedFile: '{0}{1}{2}', pageSuffix: ' · page {0}', pageCountSuffix: ' / {0} pages',
+    fullImageWidthHelp: 'The displayed width of the full image in pixels. Crop coordinates and dimensions are relative to this width.',
+    targetCropWidthHelp: 'The target width of the cropped region in pixels. bSize is calculated automatically from this value.',
+    invalidTemplate: 'Could not find a CSS image crop template invocation.',
+    missingClose: 'Could not find the closing braces for the template.',
+    missingImageParameter: 'Could not find the Image/그림 parameter.',
+    switchLanguage: '한국어',
+  },
+};
+let currentLanguage = 'ko';
+let lastMessage = null;
+const tr = (key, values = []) => {
+  if (key === 'loadedFile') {
+    const [file, page, count] = values;
+    return `${file}${page ? tr('pageSuffix', [page]) : ''}${count ? tr('pageCountSuffix', [count]) : ''}`;
+  }
+  let text = translations[currentLanguage][key] || translations.ko[key] || key;
+  values.forEach((value, index) => { text = text.replace(`{${index}}`, value); });
+  return text;
+};
+function applyLanguage() {
+  document.documentElement.lang = currentLanguage;
+  document.title = tr('title');
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = tr(el.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    el.innerHTML = tr(el.dataset.i18nHtml);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    el.title = tr(el.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = tr(el.dataset.i18nPlaceholder);
+  });
+  $('langBtn').textContent = tr('switchLanguage');
+  $('langBtn').setAttribute('aria-label', currentLanguage === 'ko' ? 'Switch interface language to English' : '인터페이스 언어를 한국어로 변경');
+  $('englishOutputOption').hidden = currentLanguage === 'en';
+  $('resetSize').title = st.defaultWidth
+    ? tr('originalWidthButtonTitle', [st.defaultWidth])
+    : tr('originalWidthUnavailable');
+  if ($('copyMsg').dataset.message) $('copyMsg').textContent = tr($('copyMsg').dataset.message);
+  if (lastMessage) {
+    $('msg').textContent = lastMessage.raw ?? tr(lastMessage.key, lastMessage.values);
+    $('msg').className = lastMessage.error ? 'err' : '';
+  }
+  update();
+}
+$('langBtn').addEventListener('click', () => {
+  currentLanguage = currentLanguage === 'ko' ? 'en' : 'ko';
+  applyLanguage();
+});
+
+/* ---------- 상태 ----------
+   선택 영역은 그림 전체에 대한 비율(0~1)로 저장해서, 확대 배율·bSize와 무관하게 유지한다. */
+const st = {
+  api: 'https://ko.wikisource.org/w/api.php',
+  file: '', page: null, multipage: false,
+  defaultWidth: null,
+  ratio: 1,          // 쪽의 세로/가로 비 (MediaWiki가 계산한 썸네일 크기 기준)
+  thumb: '',         // 화면에 띄울 고해상도 썸네일 URL
+  zoom: 1, fit: true,
+  sel: null,         // {x, y, w, h} 비율
+};
+
+/* ---------- 입력 해석 ---------- */
+function parseSource(raw) {
+  let s = raw.trim();
+  let host = 'ko.wikisource.org';
+  const m = s.match(/^https?:\/\/([^/]+)\/(.*)$/);
+  if (m) {
+    host = m[1];
+    let rest = m[2];
+    const t = rest.match(/[?&]title=([^&#]+)/);
+    if (t) rest = t[1];
+    else rest = rest.replace(/^wiki\//, '').replace(/[?#].*$/, '');
+    s = rest;
+  }
+  try { s = decodeURIComponent(s.replace(/\+/g, ' ')); } catch (e) {}
+  s = s.replace(/_/g, ' ').trim();
+  s = s.replace(/^(페이지|Page|파일|File|색인|Index|Image|그림)\s*:\s*/i, '');
+  let page = null;
+  const pm = s.match(/^(.*\.(?:pdf|djvu|tiff?))\/(\d+)$/i);
+  if (pm) { s = pm[1]; page = +pm[2]; }
+  return { host, file: s, page };
+}
+
+function setMsg(key, values = [], error = false) {
+  lastMessage = { key, values, error };
+  const el = $('msg'); el.textContent = tr(key, values); el.className = error ? 'err' : '';
+}
+function setRawMsg(text, error = false) {
+  lastMessage = { raw: text, error };
+  const el = $('msg'); el.textContent = text; el.className = error ? 'err' : '';
+}
+
+async function load(opts = {}) {
+  const p = parseSource($('src').value);
+  if (!p.file) { setMsg('imageMissingInput', [], true); return; }
+  let page = $('pageNo').value ? +$('pageNo').value : p.page;
+  st.api = `https://${p.host}/w/api.php`;
+  st.file = p.file;
+  st.multipage = /\.(pdf|djvu|tiff?)$/i.test(p.file);
+  if (st.multipage && !page) page = 1;
+  st.page = st.multipage ? page : null;
+  $('pageNo').value = st.page || '';
+  setMsg('loading');
+
+  const W = 2000;
+  const q = new URLSearchParams({
+    action: 'query', format: 'json', formatversion: '2', origin: '*',
+    titles: 'File:' + p.file, prop: 'imageinfo', iiprop: 'url|size|mime',
+    iiurlwidth: String(W),
+  });
+  if (st.page) q.set('iiurlparam', `page${st.page}-${W}px`);
+  let info;
+  try {
+    const r = await fetch(`${st.api}?${q}`);
+    const d = await r.json();
+    const pg = d.query && d.query.pages && d.query.pages[0];
+    info = pg && pg.imageinfo && pg.imageinfo[0];
+    if (!info) throw new Error(tr('missingFile', [p.file]));
+    if (st.page && info.pagecount && st.page > info.pagecount)
+      throw new Error(tr('pageCountError', [info.pagecount]));
+  } catch (e) { setRawMsg(e.message || String(e), true); return; }
+
+  st.defaultWidth = Math.round(info.width || info.thumbwidth || 0) || null;
+  $('resetSize').disabled = !st.defaultWidth;
+  $('resetSize').title = st.defaultWidth
+    ? tr('originalWidthButtonTitle', [st.defaultWidth])
+    : tr('originalWidthUnavailable');
+  if (!opts.keepSel && st.defaultWidth) {
+    $('modeB').checked = true;
+    $('sizeIn').value = st.defaultWidth;
+    st.numEdit = false;
+  }
+  st.ratio = info.thumbheight / info.thumbwidth;
+  st.thumb = info.thumburl.replace(/[?&]utm_[^&]*/g, '').replace(/\?$/, '');
+  $('pImage').value = p.file;
+  $('pPage').value = st.page || '';
+  if (!opts.keepSel) st.sel = null;
+
+  const img = $('img');
+  img.onload = () => {
+    $('empty').hidden = true; $('stage').hidden = false;
+    setMsg('loadedFile', [p.file, st.page, info.pagecount]);
+    if (st.fit) fitZoom(); else applyZoom();
+    update();
+  };
+  img.onerror = () => setMsg('imageLoadError', [], true);
+  img.src = st.thumb;
+}
+
+/* ---------- 확대/축소 ---------- */
+function natural() { const img = $('img'); return { w: img.naturalWidth || 1000, h: (img.naturalWidth || 1000) * st.ratio }; }
+function dispSize() { const n = natural(); return { w: n.w * st.zoom, h: n.h * st.zoom }; }
+function fitZoom() {
+  const wrap = $('stageWrap');
+  const availW = wrap.clientWidth - 32, availH = wrap.clientHeight - 80;
+  const n = natural();
+  st.zoom = Math.max(0.05, Math.min(availW / n.w, availH > 200 ? availH / n.h : Infinity, 4));
+  st.fit = true; applyZoom();
+}
+function applyZoom() {
+  const d = dispSize(), img = $('img');
+  img.style.width = d.w + 'px'; img.style.height = d.h + 'px';
+  $('zoomInfo').textContent = tr('zoom', [Math.round(st.zoom * 100)]);
+  drawSel();
+}
+$('zFit').onclick = fitZoom;
+$('zIn').onclick = () => { st.fit = false; st.zoom = Math.min(st.zoom * 1.25, 8); applyZoom(); };
+$('zOut').onclick = () => { st.fit = false; st.zoom = Math.max(st.zoom / 1.25, 0.05); applyZoom(); };
+window.addEventListener('resize', () => { if (st.fit && !$('stage').hidden) fitZoom(); });
+
+/* ---------- 크기 계산 ---------- */
+function mode() { return $('modeC').checked ? 'cwidth' : 'bsize'; }
+function bSize() {
+  const v = Math.max(1, +$('sizeIn').value || 0);
+  if (mode() === 'bsize' || !st.sel || st.sel.w <= 0) return Math.round(v);
+  return Math.round(v / st.sel.w);
+}
+/* MediaWiki가 bSize 폭으로 그릴 때의 실제 높이. 반올림 방식이 미묘하게 다르므로
+   bSize마다 API에 물어서 정확한 값을 쓰고, 답이 오기 전에는 비율로 추정한다. */
+const hCache = new Map();
+let hTimer = null;
+function fullH(b) {
+  const key = `${st.file}|${st.page}|${b}`;
+  if (hCache.has(key)) return hCache.get(key);
+  clearTimeout(hTimer);
+  hTimer = setTimeout(() => queryH(b, key), 250);
+  return Math.round(b * st.ratio);
+}
+async function queryH(b, key) {
+  if (hCache.has(key) || !st.file) return;
+  const q = new URLSearchParams({
+    action: 'query', format: 'json', formatversion: '2', origin: '*',
+    titles: 'File:' + st.file, prop: 'imageinfo', iiprop: 'url|size', iiurlwidth: String(b),
+  });
+  if (st.page) q.set('iiurlparam', `page${st.page}-${b}px`);
+  try {
+    const d = await (await fetch(`${st.api}?${q}`)).json();
+    const ii = d.query.pages[0].imageinfo[0];
+    if (!ii.thumbheight) return;
+    hCache.set(key, ii.thumbheight);
+    if (ii.thumbwidth && ii.thumbwidth < b) setMsg('sizeWarning', [ii.thumbwidth, b], true);
+    if (key === `${st.file}|${st.page}|${bSize()}`) { if (st.numEdit) applyNums(); else update(); }
+  } catch (e) { /* 추정값 그대로 사용 */ }
+}
+function px() {
+  if (!st.sel) return null;
+  const b = bSize(), H = fullH(b), s = st.sel;
+  const L = Math.round(s.x * b), T = Math.round(s.y * H);
+  st.lastB = b;
+  return {
+    b, H, oLeft: L, oTop: T,
+    cWidth: mode() === 'cwidth' ? Math.round(+$('sizeIn').value) : Math.max(1, Math.round((s.x + s.w) * b) - L),
+    cHeight: Math.max(1, Math.round((s.y + s.h) * H) - T),
+  };
+}
+
+/* ---------- 선택 상자 그리기 ---------- */
+function drawSel() {
+  const el = $('sel');
+  if (!st.sel) { el.hidden = true; return; }
+  const d = dispSize(), s = st.sel;
+  el.hidden = false;
+  Object.assign(el.style, { left: s.x * d.w + 'px', top: s.y * d.h + 'px', width: s.w * d.w + 'px', height: s.h * d.h + 'px' });
+  const v = px();
+  $('selTag').textContent = `${v.cWidth}×${v.cHeight} @ ${v.oLeft},${v.oTop}`;
+  $('selTag').style.top = s.y * d.h < 24 ? '2px' : '-22px';
+}
+
+function clamp(s) {
+  const min = 0.002;
+  s.w = Math.max(min, Math.min(s.w, 1)); s.h = Math.max(min, Math.min(s.h, 1));
+  s.x = Math.max(0, Math.min(s.x, 1 - s.w)); s.y = Math.max(0, Math.min(s.y, 1 - s.h));
+  return s;
+}
+
+/* ---------- 마우스/터치 조작 ---------- */
+let drag = null;
+function pt(e) {
+  const r = $('img').getBoundingClientRect();
+  return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) };
+}
+$('stage').addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const p = pt(e), h = e.target.dataset && e.target.dataset.h;
+  if (h) drag = { kind: 'resize', h, start: p, orig: { ...st.sel } };
+  else if (e.target.closest('#sel')) drag = { kind: 'move', start: p, orig: { ...st.sel } };
+  else { drag = { kind: 'new', start: p }; st.sel = { x: p.x, y: p.y, w: 0.002, h: 0.002 }; }
+  $('stage').setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+$('stage').addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = pt(e), o = drag.orig, a = drag.start;
+  if (drag.kind === 'new') {
+    st.sel = { x: Math.min(a.x, p.x), y: Math.min(a.y, p.y), w: Math.abs(p.x - a.x), h: Math.abs(p.y - a.y) };
+  } else if (drag.kind === 'move') {
+    st.sel = { ...o, x: o.x + p.x - a.x, y: o.y + p.y - a.y };
+  } else {
+    let x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h;
+    if (drag.h.includes('w')) x1 = p.x; if (drag.h.includes('e')) x2 = p.x;
+    if (drag.h.includes('n')) y1 = p.y; if (drag.h.includes('s')) y2 = p.y;
+    st.sel = { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
+  }
+  clamp(st.sel); update();
+});
+const endDrag = () => { if (drag) { drag = null; $('sel').focus({ preventScroll: true }); } };
+$('stage').addEventListener('pointerup', endDrag);
+$('stage').addEventListener('pointercancel', endDrag);
+
+$('sel').addEventListener('keydown', e => {
+  if (!st.sel || !e.key.startsWith('Arrow')) return;
+  const v = px(), stepX = (e.shiftKey ? 10 : 1) / v.b, stepY = (e.shiftKey ? 10 : 1) / v.H;
+  const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+  const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+  if (e.altKey) { st.sel.w += dx * stepX; st.sel.h += dy * stepY; }
+  else { st.sel.x += dx * stepX; st.sel.y += dy * stepY; }
+  clamp(st.sel); update(); e.preventDefault();
+});
+$('selAll').onclick = () => { st.numEdit = false; st.sel = { x: 0, y: 0, w: 1, h: 1 }; update(); };
+$('selClear').onclick = () => { st.numEdit = false; st.sel = null; update(); };
+
+/* ---------- 숫자 칸 → 선택 상자 ---------- */
+// st.numEdit: 마지막 조작이 숫자 입력이었는지. 그렇다면 정확한 높이가 나중에 도착해도 입력한 숫자를 그대로 지킨다.
+function applyNums() {
+  if (!st.thumb) return;
+  // 숫자를 직접 고칠 때는 bSize를 고정해야 값이 서로 꼬이지 않으므로 bSize 기준으로 바꾼다
+  if (mode() === 'cwidth') { $('sizeIn').value = bSize(); $('modeB').checked = true; }
+  const b = bSize(), H = fullH(b);
+  const L = +$('vLeft').value || 0, T = +$('vTop').value || 0;
+  const Wd = Math.max(1, +$('vW').value || 1), Ht = Math.max(1, +$('vH').value || 1);
+  st.sel = clamp({ x: L / b, y: T / H, w: Wd / b, h: Ht / H });
+  st.numEdit = true;
+  update({ fromNums: true });
+}
+['vLeft', 'vTop', 'vW', 'vH'].forEach(id => $(id).addEventListener('input', applyNums));
+['pointerdown', 'keydown'].forEach(t => $('stage').addEventListener(t, () => { st.numEdit = false; }, true));
+
+/* ---------- 출력 ---------- */
+function params() {
+  const v = px();
+  return [
+    ['그림', $('pImage').value.trim()],
+    ['쪽', $('pPage').value.trim()],
+    ['기준폭', v ? v.b : ''],
+    ['자르기폭', v ? v.cWidth : ''],
+    ['자르기높이', v ? v.cHeight : ''],
+    ['위쪽오프셋', v ? v.oTop : ''],
+    ['왼쪽오프셋', v ? v.oLeft : ''],
+    ['위치', $('pLoc').value],
+    ['설명', $('pDesc').value.trim()],
+    ['대체텍스트', $('pAlt').value.trim()],
+    ['링크', $('pLink').value.trim()],
+    ['확대링크', $('pMagnifyLink').value.trim()],
+  ];
+}
+function code() {
+  let ps = params();
+  if ($('skipEmpty').checked) ps = ps.filter(([, val]) => val !== '' && val != null);
+  const englishNames = {
+    '그림': 'Image', '쪽': 'Page', '기준폭': 'bSize',
+    '자르기폭': 'cWidth', '자르기높이': 'cHeight',
+    '위쪽오프셋': 'oTop', '왼쪽오프셋': 'oLeft',
+    '위치': 'Location', '설명': 'Description',
+    '대체텍스트': 'Alt', '링크': 'Link', '확대링크': 'magnify-link',
+  };
+  const english = currentLanguage === 'en' || $('englishOutput').checked;
+  const template = english ? 'CSS image crop' : 'CSS 이미지 자르기';
+  ps = ps.map(([key, val]) => [english ? englishNames[key] : key, val]);
+  if ($('oneLine').checked) return '{{' + template + ps.map(([k, val]) => ` |${k}=${val}`).join('') + '}}';
+  const w = Math.max(...ps.map(([k]) => k.length));
+  return '{{' + template + '\n' + ps.map(([k, val]) => `| ${k.padEnd(w)} = ${val}`).join('\n') + '\n}}';
+}
+
+function update(o = {}) {
+  drawSel();
+  const v = px();
+  if (!o.fromNums) {
+    $('vLeft').value = v ? v.oLeft : ''; $('vTop').value = v ? v.oTop : '';
+    $('vW').value = v ? v.cWidth : ''; $('vH').value = v ? v.cHeight : '';
+  }
+  const sizeHelp = tr(mode() === 'bsize' ? 'fullImageWidthHelp' : 'targetCropWidthHelp');
+  $('sizeLabel').textContent = tr(mode() === 'bsize' ? 'baseWidth' : 'targetCropWidth');
+  $('sizeLabel').title = sizeHelp;
+  $('sizeIn').title = sizeHelp;
+  $('sizeHint').textContent = v
+    ? tr('cropSizeHint', [v.b, v.H])
+    : (st.thumb ? tr('ratioHint', [(1 / st.ratio).toFixed(3)]) : '');
+  $('out').value = v ? code() : '';
+  renderPreview(v);
+}
+
+function renderPreview(v) {
+  const box = $('previewBox');
+  if (!v) { box.innerHTML = `<span class="hint">${tr('previewEmpty')}</span>`; return; }
+  let crop = box.querySelector('.crop');
+  if (!crop) {
+    box.innerHTML = '<div class="crop"><div><img alt=""></div></div>';
+    crop = box.querySelector('.crop');
+  }
+  const inner = crop.firstChild, img = inner.firstChild;
+  if (img.getAttribute('src') !== st.thumb) img.src = st.thumb;
+  crop.style.width = v.cWidth + 'px'; crop.style.height = v.cHeight + 'px';
+  inner.style.top = -v.oTop + 'px'; inner.style.left = -v.oLeft + 'px'; inner.style.width = v.b + 'px';
+  img.style.width = v.b + 'px'; img.style.height = v.H + 'px';
+}
+
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => {
+  // 기준을 바꿔도 결과가 같도록 값을 환산
+  // 직전 기준으로 계산했던 bSize(st.lastB)를 새 기준의 값으로 바꿔 넣는다
+  st.numEdit = false;
+  if (st.sel && st.lastB) $('sizeIn').value = mode() === 'cwidth' ? Math.round(st.sel.w * st.lastB) : st.lastB;
+  update();
+}));
+$('sizeIn').addEventListener('input', () => { st.numEdit = false; update(); });
+$('resetSize').onclick = () => {
+  if (!st.defaultWidth) return;
+  st.numEdit = false;
+  $('modeB').checked = true;
+  $('sizeIn').value = st.defaultWidth;
+  update();
+};
+['pImage', 'pPage', 'pLoc', 'pDesc', 'pAlt', 'pLink', 'pMagnifyLink', 'oneLine', 'skipEmpty', 'englishOutput']
+  .forEach(id => $(id).addEventListener('input', () => update({ fromNums: true })));
+['oneLine', 'skipEmpty', 'pLoc'].forEach(id => $(id).addEventListener('change', () => update({ fromNums: true })));
+
+$('copyBtn').onclick = async () => {
+  const t = $('out');
+  if (!t.value) return;
+  try { await navigator.clipboard.writeText(t.value); $('copyMsg').dataset.message = 'copied'; $('copyMsg').textContent = tr('copied'); }
+  catch (e) { t.select(); document.execCommand('copy'); $('copyMsg').dataset.message = 'copied'; $('copyMsg').textContent = tr('copied'); }
+  setTimeout(() => { $('copyMsg').textContent = ''; delete $('copyMsg').dataset.message; }, 2000);
+};
+
+/* ---------- 기존 코드 불러오기 ---------- */
+$('importBtn').onclick = async () => {
+  const txt = $('importBox').value;
+  const invocation = /\{\{\s*(?:CSS[ _]+image[ _]+crop|CSS[ _]+이미지[ _]+자르기)(?=[\s|}])/i.exec(txt);
+  if (!invocation) {
+    setMsg('invalidTemplate', [], true);
+    return;
+  }
+
+  const aliases = [
+    ['그림', 'Image'], ['쪽', 'Page'], ['기준폭', 'bSize'],
+    ['자르기폭', 'cWidth'], ['자르기높이', 'cHeight'],
+    ['위쪽오프셋', 'oTop'], ['왼쪽오프셋', 'oLeft'],
+    ['위치', 'Location'], ['설명', 'Description'],
+    ['대체텍스트', 'Alt'], ['링크', 'Link'], ['확대링크', 'magnify-link'],
+  ];
+  const openingEnd = invocation.index + invocation[0].length;
+  let depth = 1, linkDepth = 0, segmentStart = openingEnd, end = -1;
+  const parts = [];
+  for (let i = openingEnd; i < txt.length;) {
+    if (txt.startsWith('<!--', i)) {
+      const commentEnd = txt.indexOf('-->', i + 4);
+      if (commentEnd < 0) break;
+      i = commentEnd + 3;
+    } else if (txt.startsWith('{{', i)) {
+      depth++; i += 2;
+    } else if (txt.startsWith('}}', i)) {
+      if (--depth === 0) {
+        parts.push(txt.slice(segmentStart, i));
+        end = i + 2;
+        break;
+      }
+      i += 2;
+    } else if (txt.startsWith('[[', i)) {
+      linkDepth++; i += 2;
+    } else if (txt.startsWith(']]', i)) {
+      linkDepth = Math.max(0, linkDepth - 1); i += 2;
+    } else if (txt[i] === '|' && depth === 1 && linkDepth === 0) {
+      parts.push(txt.slice(segmentStart, i));
+      segmentStart = ++i;
+    } else i++;
+  }
+  if (end < 0) {
+    setMsg('missingClose', [], true);
+    return;
+  }
+
+  const kv = {};
+  for (const part of parts) {
+    const i = part.indexOf('=');
+    if (i > 0) kv[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  const values = Object.fromEntries(aliases.map(([ko, en]) => [
+    ko,
+    Object.prototype.hasOwnProperty.call(kv, ko) ? kv[ko] : (kv[en] || ''),
+  ]));
+  if (!values['그림']) { setMsg('missingImageParameter', [], true); return; }
+  $('src').value = values['그림']; $('pageNo').value = values['쪽'];
+  $('pLoc').value = values['위치']; $('pDesc').value = values['설명'];
+  $('pAlt').value = values['대체텍스트']; $('pLink').value = values['링크'];
+  $('pMagnifyLink').value = values['확대링크'];
+  $('modeB').checked = true; $('sizeIn').value = values['기준폭'] || 800;
+  await load({ keepSel: true });
+  if (values['자르기폭'] && values['자르기높이']) {
+    $('vLeft').value = values['왼쪽오프셋'] || 0; $('vTop').value = values['위쪽오프셋'] || 0;
+    $('vW').value = values['자르기폭']; $('vH').value = values['자르기높이'];
+    applyNums();
+  } else update();
+};
+
+$('loadBtn').onclick = () => load();
+$('src').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+$('src').addEventListener('input', () => { $('pageNo').value = ''; });
+$('pageNo').addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
+})();
+</script>
+</body>
+</html>
