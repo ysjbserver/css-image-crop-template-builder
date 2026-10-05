@@ -1,8 +1,8 @@
 # css-image-crop-template-builder
-Repository for [css-image-crop-template-builder](https://tools.wmflabs.org/css-image-crop-template-builder/) from Wikimedia Toolforge
+Repository for [css-image-crop-template-builder](https://tools-static.wmflabs.org/css-image-crop-template-builder/) from Wikimedia Toolforge
 
 # CSS 이미지 자르기 도우미
-위키미디어 툴포지(Wikimedia Toolforge)에 있는 [css-image-crop-template-builder](https://tools.wmflabs.org/css-image-crop-template-builder/)의 소스 코드 저장소입니다.
+위키미디어 툴포지(Wikimedia Toolforge)에 있는 [css-image-crop-template-builder](https://tools-static.wmflabs.org/css-image-crop-template-builder/)의 소스 코드 저장소입니다.
 
 위키미디어 환경에서 위키미디어 공용의 이미지나 위키문헌의 페이지 문서 URL을 입력하여, 해당 이미지를 불러와 원하는 영역을 선택하면, 해당 영역만 표시해 주는 [틀:CSS 이미지 자르기](https://ko.wikisource.org/wiki/%ED%8B%80:CSS_%EC%9D%B4%EB%AF%B8%EC%A7%80_%EC%9E%90%EB%A5%B4%EA%B8%B0)에 사용할 코드를 만들어 주는 도구입니다.
 
